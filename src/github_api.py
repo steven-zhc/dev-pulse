@@ -1,22 +1,34 @@
-from github import Github
+from src.models import Repository, session
+from github import Github, Auth
 import os
 
 # Authenticate using the token
 token = os.getenv('GITHUB_TOKEN')
-g = Github(token)
+auth = Auth.Token(token)
+g = Github(auth=auth)
 
 def get_repo_info(repo_name):
+    # Check if repo info is already stored in the database
+    repo = session.query(Repository).filter_by(name=repo_name).first()
+    if repo:
+        return repo
+
+    # Fetch from GitHub API if not found in the database
     try:
-        repo = g.get_repo(repo_name)
-        return {
-            "name": repo.name,
-            "description": repo.description,
-            "stars": repo.stargazers_count,
-            "forks": repo.forks_count,
-            "open_issues": repo.open_issues_count
-        }
+        repo_data = g.get_repo(repo_name)
+        repo = Repository(
+            name=repo_name,
+            description=repo_data.description,
+            stars=repo_data.stargazers_count,
+            forks=repo_data.forks_count,
+            open_issues=repo_data.open_issues_count
+        )
+        session.add(repo)
+        session.commit()
+        return repo
     except Exception as e:
         print(f"Error fetching repo: {e}")
+        session.rollback()  # Rollback on error
         return None
 
 def get_commits(repo_name):
